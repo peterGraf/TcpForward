@@ -1,5 +1,5 @@
 # TcpForward
-TcpForward - TCP forwarder to overcome IPv6 DS-Lite-Tunnel restrictions of my ISP.
+TcpForward - TCP forwarder to overcome IPv6 DS-Lite-Tunnel restrictions of my ISP. IPv4 access does not work.
 
 ## What is this about? 
 
