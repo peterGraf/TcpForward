@@ -20,7 +20,7 @@ TcpForward - TCP forwarder to overcome IPv6 DS-Lite-Tunnel restrictions of my IS
 
  Then run
 
- 'java TcpForward extern' on the webserver.mydomain.com
+ 'java TcpForward extern' on the webserver.mydomain.com.
 
  and run
 
