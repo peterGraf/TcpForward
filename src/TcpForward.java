@@ -119,6 +119,7 @@ public class TcpForward {
 
 				int n = internalStream.read(bytes);
 				if (n < 1) {
+					println("Connection closed");
 					sleepOneSecond();
 					continue;
 				}
@@ -221,6 +222,7 @@ public class TcpForward {
 					try {
 						int n = inputStream.read(bytes);
 						if (n < 1) {
+							println("Connection closed");
 							break;
 						}
 						outputStream.write(bytes, 0, n);
