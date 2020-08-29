@@ -16,24 +16,23 @@ TcpForward - TCP forwarder to overcome IPv6 DS-Lite-Tunnel restrictions of my IS
 
 ## Setup:
 
- In order to do so, open both ports 22222 and 22223 on the firewall of the webserver.mydomain.com.
+ In order to make TcpForward work, open both ports 22222 and 22223 on the firewall of your 'webserver.mydomain.com'.
 
  Then run
 
- 'java TcpForward extern' on the webserver.mydomain.com.
+ 'java TcpForward extern' on your 'webserver.mydomain.com'.
 
  and run
 
- 'java TcpForwad webserver.mydomain.com' on the internal machine.
+ 'java TcpForwad webserver.mydomain.com' on the your internal machine.
 
 ## Workflow:
 
-- TcpForward on the webserver listens on port 22223.
+- TcpForward on the webserver first listens on internal port 22223.
 
-- TcpForward on the internal connects to webserver:22223,
-  this connection is established from inside my local network.
+- TcpForward on the internal connects to webserver:22223.
   
-- TcpForward on the webserver listens on port 22222.
+- TcpForward on the webserver accepts internal connection and then listens on external port 22222.
 
 - TcpForward on the internal waits for bytes from the connection. 
 
