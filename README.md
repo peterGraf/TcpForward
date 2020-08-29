@@ -9,7 +9,7 @@ TcpForward - TCP forwarder to overcome IPv6 DS-Lite-Tunnel restrictions of my IS
  Basicly, no IP connection can be established from the internet to my router.
  All connections have to be established from inside my local network.
 
- I have a linux machine, let's call it webserver.mydomain.com, hosted by an ISP that is reachable via the net.
+ I have a linux machine, let's call it webserver.mydomain.com, that is reachable via the net.
  I have another linux machine, let's call it internal, inside my home, not reachable via the net.
 
  I want to enable access to my internal machine via forwarding from my webserver.
