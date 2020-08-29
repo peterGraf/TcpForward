@@ -16,7 +16,7 @@ TcpForward - TCP forwarder to overcome IPv6 DS-Lite-Tunnel restrictions of my IS
 
 ## Setup:
 
- In order to do so, open both ports 22222 and 22223 on the firewall of webserver.mydomain.com.
+ In order to do so, open both ports 22222 and 22223 on the firewall of the webserver.mydomain.com.
 
  Then run
 
