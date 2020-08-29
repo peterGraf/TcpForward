@@ -19,70 +19,15 @@ Copyright (C) 2020, Peter Graf - All Rights Reserved.
 For more information on 
 
 Peter Graf, see www.mission-base.com/peter/
+TcpForward, see www.github.com/peterGraf/TcpForward
 
-**
-
-What is this about? 
-
- Well, my ISP offers a form of DSL, IPv6 DS-Lite-Tunnel, which makes it impossible to allow
- port forwarding and make machines from my internal network reachable from the internet.
-
- Basicly, no IP connection can be established from the internet to my router.
- All connections have to be established from inside my local network.
-
- I have a linux machine, let's call it webserver.mydomain.com, hosted by an ISP that is reachable via the net.
- I have another linux machine, let's call it internal, inside my home, not reachable via the net.
-
- I want to enable access to my internal machine via forwarding from my webserver.
-
- In order to do so, open both ports 22222 and 22223 on the firewall of webserver.mydomain.com.
-
- Then run
-
- 'java TcpForward extern' on the webserver.mydomain.com
-
- and run
-
- 'java TcpForwad webserver.mydomain.com' on the internal machine.
-
-Workflow:
-
-- TcpForward on the webserver listens on port 22223.
-
-- TcpForward on the internal connects to webserver:22223,
-  this connection is established from inside my local network.
-  
-- TcpForward on the webserver listens on port 22222.
-
-- TcpForward on the internal waits for bytes from the connection. 
-
-- The external user starts an ssh session to the webserver:
-
-   ssh webserver.mydomain.com -p 22222
-
-- TcpForward on the webserver receives bytes on port 22222.
-
-- TcpForward on the webserver forwards the bytes to TcpForward on the internal.
-
-- TcpForward on the internal receives bytes.
-
-- TcpForward on the internal connects to localhost port 22, the local ssh server.
-
-- TcpForward on the internal sends the received bytes to the ssh server.
-
-- Both TcpForwards now forward all traffic between the external user and the internal ssh server.
-
-- If anything goes wrong, both TcpForwards revert to step one and two.
-
-Restrictions:
-
- TcpForward only allows one connection at any time.
 */
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.*;
 
 public class TcpForward {
@@ -95,7 +40,16 @@ public class TcpForward {
 	private Socket internalSocket = null;
 	private Socket externalSocket = null;
 
-	public void run(String[] args) {
+	private volatile Boolean keepForwardingBytes = false;
+
+	public static void main(String[] args) {
+
+		TcpForward tcpForward = new TcpForward();
+		tcpForward.runTcpForward(args);
+		System.exit(0);
+	}
+
+	private void runTcpForward(String[] args) {
 
 		if (args.length != 1) {
 			System.err.println("Usage: java TcpForward extern|<hostname of external host>");
@@ -103,7 +57,7 @@ public class TcpForward {
 		}
 
 		for (int i = 0; i < args.length; i++) {
-			Println("args[" + i + "] = '" + args[i] + "'");
+			println("args[" + i + "] = '" + args[i] + "'");
 		}
 
 		if ("extern".equals(args[0])) {
@@ -117,202 +71,176 @@ public class TcpForward {
 
 		for (;;) {
 			try {
-				if (externalServerSocket != null) {
-					externalServerSocket.close();
-					externalServerSocket = null;
-				}
-				if (internalServerSocket != null) {
-					internalServerSocket.close();
-					internalServerSocket = null;
-				}
-				if (externalSocket != null) {
-					externalSocket.close();
-					externalSocket = null;
-				}
-				if (internalSocket != null) {
-					internalSocket.close();
-					internalSocket = null;
-				}
+				keepForwardingBytes = false;
+				closeSockets();
 
-				Println("Listening on internal port " + internalPort);
-
+				println("Listening on internal port " + internalPort);
 				internalServerSocket = new ServerSocket(internalPort);
+
 				internalSocket = internalServerSocket.accept();
+				println("Internal connection accepted from " + internalSocket.getInetAddress());
 
-				Println("Internal connection accepted");
-				Println("Listening on external port " + externalPort);
-
+				println("Listening on external port " + externalPort);
 				externalServerSocket = new ServerSocket(externalPort);
+
 				externalSocket = externalServerSocket.accept();
+				println("External connection accepted from " + externalSocket.getInetAddress());
 
-				Println("External connection accepted");
-
-				DoRun = true;
-				CopyBytes copyToExternal = new CopyBytes(internalSocket, externalSocket, "Internal socket read bytes ");
-				copyToExternal.start();
-
-				CopyBytes copyToInternal = new CopyBytes(externalSocket, internalSocket, "External socket read bytes ");
-				copyToInternal.start();
-
-				while (DoRun) {
+				startForwardingBytes();
+				while (keepForwardingBytes) {
 					Thread.sleep(100);
 				}
 			} catch (Exception e) {
 				if (Thread.interrupted()) {
-					Println("Interrupted, bye");
+					println("Interrupted, bye");
 					return;
 				}
-				Println("Exception: " + e.getMessage());
+				println("Exception: " + e.getMessage());
 			}
-
-			try {
-				Thread.sleep(1000);
-			} catch (Exception e) {
-				if (Thread.interrupted()) {
-					Println("Interrupted, bye");
-					return;
-				}
-				Println("Exception: " + e.getMessage());
-			}
+			sleepOneSecond();
 		}
 	}
 
 	private void runIntern(String hostName) {
 
+		byte[] bytes = new byte[1024];
 		for (;;) {
 			try {
-				DoRun = false;
-				if (externalSocket != null) {
-					externalSocket.close();
-					externalSocket = null;
-				}
-				if (internalSocket != null) {
-					internalSocket.close();
-					internalSocket = null;
-				}
+				keepForwardingBytes = false;
+				closeSockets();
 
-				Println("Connecting to external " + hostName + ":" + internalPort);
+				println("Connecting to internal " + hostName + ":" + internalPort);
+				internalSocket = new Socket(hostName, internalPort);
+				println("Connected to internal " + hostName + ":" + internalPort);
 
-				externalSocket = new Socket(hostName, internalPort);
+				println("Waiting for bytes on internal connection");
+				DataInputStream internalStream = new DataInputStream(
+						new BufferedInputStream(internalSocket.getInputStream()));
 
-				Println("Connected to external " + hostName + ":" + internalPort);
-
-				Println("Reading on external connection");
-				DataInputStream externalInput = new DataInputStream(
-						new BufferedInputStream(externalSocket.getInputStream()));
-				
-				byte[] bytes = new byte[1024];
-				int n = externalInput.read(bytes);
+				int n = internalStream.read(bytes);
 				if (n < 1) {
-					try {
-						Thread.sleep(1000);
-					} catch (Exception e) {
-						if (Thread.interrupted()) {
-							Println("Interrupted, bye");
-							return;
-						}
-						Println("Exception: " + e.getMessage());
-					}
+					sleepOneSecond();
 					continue;
 				}
-				Println("External socket read bytes " + n);
+				println("Received bytes on internal connection: " + n);
 
-				Println("Connecting to internal localhost:22");
-				internalSocket = new Socket("localhost", 22);
-				Println("Connected to internal localhost:22");
+				println("Connecting to localhost:22");
+				externalSocket = new Socket("localhost", 22);
+				println("Connected to localhost:22");
 
-				DataOutputStream internalOutput = new DataOutputStream(new BufferedOutputStream(internalSocket.getOutputStream()));
-				internalOutput.write(bytes, 0, n);
-				internalOutput.flush();
+				DataOutputStream externalStream = new DataOutputStream(
+						new BufferedOutputStream(externalSocket.getOutputStream()));
+				externalStream.write(bytes, 0, n);
+				externalStream.flush();
+				println("Forwarded bytes to external connection: " + n);
 
-				DoRun = true;
-				CopyBytes copyToExternal = new CopyBytes(internalSocket, externalSocket, "Internal socket read bytes ");
-				copyToExternal.start();
-
-				CopyBytes copyToInternal = new CopyBytes(externalSocket, internalSocket, "External socket read bytes ");
-				copyToInternal.start();
-
-				while (DoRun) {
+				startForwardingBytes();
+				while (keepForwardingBytes) {
 					Thread.sleep(100);
 				}
 			} catch (Exception e) {
 				if (Thread.interrupted()) {
-					Println("Interrupted, bye");
+					println("Interrupted, bye");
 					return;
 				}
-				Println("Exception: " + e.getMessage());
+				println("Exception: " + e.getMessage());
 			}
-
-			try {
-				Thread.sleep(1000);
-			} catch (Exception e) {
-				if (Thread.interrupted()) {
-					Println("Interrupted, bye");
-					return;
-				}
-				Println("Exception: " + e.getMessage());
-			}
+			sleepOneSecond();
 		}
 	}
 
-	public static void main(String[] args) {
-
-		TcpForward tcpForward = new TcpForward();
-		tcpForward.run(args);
-		System.exit(0);
+	private void sleepOneSecond() {
+		try {
+			Thread.sleep(1000);
+		} catch (Exception e) {
+			if (Thread.interrupted()) {
+				println("Interrupted, bye");
+				return;
+			}
+			println("Exception: " + e.getMessage());
+			keepForwardingBytes = false;
+		}
 	}
 
-	private synchronized void Println(String text) {
+	private void closeSockets() throws IOException {
+		if (externalServerSocket != null) {
+			externalServerSocket.close();
+			externalServerSocket = null;
+		}
+		if (internalServerSocket != null) {
+			internalServerSocket.close();
+			internalServerSocket = null;
+		}
+		if (externalSocket != null) {
+			externalSocket.close();
+			externalSocket = null;
+		}
+		if (internalSocket != null) {
+			internalSocket.close();
+			internalSocket = null;
+		}
+	}
+
+	private synchronized void println(String text) {
 		System.out.println(text);
 	}
+	
+	private void startForwardingBytes() {
+		keepForwardingBytes = true;
+		ForwardBytes forwardToExternal = new ForwardBytes(internalSocket, externalSocket,
+				"Forwarded bytes to external connection: ");
+		forwardToExternal.start();
 
-	private volatile Boolean DoRun = false;
+		ForwardBytes forwardToInternal = new ForwardBytes(externalSocket, internalSocket,
+				"Forwarded bytes to internal connection: ");
+		forwardToInternal.start();
+	}
 
-	private class CopyBytes extends Thread {
+	private class ForwardBytes extends Thread {
 
-		private Socket From;
-		private Socket To;
-		private String Text;
+		private Socket from;
+		private Socket to;
+		private String text;
 
-		public CopyBytes(Socket from, Socket to, String text) {
-			From = from;
-			To = to;
-			Text = text;
+		public ForwardBytes(Socket pFrom, Socket pTo, String pText) {
+			from = pFrom;
+			to = pTo;
+			text = pText;
 		}
 
 		public void run() {
 
 			try {
-				From.setSoTimeout(100);
+				from.setSoTimeout(100);
 
-				DataInputStream input = new DataInputStream(new BufferedInputStream(From.getInputStream()));
-				DataOutputStream output = new DataOutputStream(new BufferedOutputStream(To.getOutputStream()));
 				byte[] bytes = new byte[32 * 1024];
+				DataInputStream inputStream = new DataInputStream(new BufferedInputStream(from.getInputStream()));
+				DataOutputStream outputStream = new DataOutputStream(new BufferedOutputStream(to.getOutputStream()));
 
-				while (DoRun) {
+				while (keepForwardingBytes) {
 					try {
-						int n = input.read(bytes);
+						int n = inputStream.read(bytes);
 						if (n < 1) {
-							DoRun = false;
 							break;
 						}
-						Println(Text + n);
-						output.write(bytes, 0, n);
-						output.flush();
+						outputStream.write(bytes, 0, n);
+						outputStream.flush();
+						println(text + n);
 					} catch (SocketTimeoutException ex) {
 						if (Thread.interrupted()) {
-							Println("Interrupted, bye");
-							DoRun = false;
+							println("Interrupted, bye");
+							break;
 						}
 					}
 				}
 			} catch (Exception e) {
 				if (Thread.interrupted()) {
-					Println("Interrupted, bye");
+					println("Interrupted, bye");
+				} else {
+					println("Exception: " + e.getMessage());
 				}
-				Println("Exception: " + e.getMessage());
-				DoRun = false;
 			}
+			keepForwardingBytes = false;
 		}
 	}
 }
