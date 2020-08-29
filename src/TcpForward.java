@@ -309,9 +309,9 @@ public class TcpForward {
 			} catch (Exception e) {
 				if (Thread.interrupted()) {
 					Println("Interrupted, bye");
-					DoRun = false;
 				}
 				Println("Exception: " + e.getMessage());
+				DoRun = false;
 			}
 		}
 	}
