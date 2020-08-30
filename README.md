@@ -32,13 +32,15 @@ TcpForward - TCP forwarder to overcome IPv6 DS-Lite-Tunnel restrictions of my IS
 
 - TcpForward on the internal connects to webserver:22223.
   
-- TcpForward on the webserver accepts internal connection and then listens on external port 22222.
+- TcpForward on the webserver accepts the internal connection and then listens on external port 22222.
 
 - TcpForward on the internal waits for bytes from the connection. 
 
 - The external user starts an ssh session to the webserver:
 
    ssh webserver.mydomain.com -p 22222
+
+- TcpForward on the webserver accepts the external connection.
 
 - TcpForward on the webserver receives bytes on port 22222.
 
